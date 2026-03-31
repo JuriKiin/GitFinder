@@ -11,7 +11,7 @@ A lightweight git UI with an embedded terminal. Via acts as a bridge for people 
 - **Branch switching** — View and switch branches from the sidebar
 - **Git Reference** — Built-in cheat sheet of common git commands
 - **Customizable themes** — Choose from built-in presets or create your own with custom color schemes
-- **Native macOS app** — Built with Electron, native folder picker, custom icon
+- **Native macOS app** — Built with Electron
 
 ## Install from DMG
 
