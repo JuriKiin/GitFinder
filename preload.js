@@ -4,6 +4,10 @@ contextBridge.exposeInMainWorld("via", {
   // File dialog
   pickDirectory: () => ipcRenderer.invoke("pick-directory"),
 
+  // Native
+  openInFinder: (path) => ipcRenderer.send("open-in-finder", path),
+  openExternal: (url) => ipcRenderer.send("open-external", url),
+
   // Git operations
   validateRepo: (path) => ipcRenderer.invoke("validate-repo", path),
   listFiles: (repoPath, query) => ipcRenderer.invoke("list-files", repoPath, query),

@@ -81,7 +81,7 @@ function renderSavedRepos() {
     container.innerHTML = repos
         .map(
             (r) => `
-            <div class="repo-item ${r.path === repoPath ? "active" : ""}" onclick="selectRepo('${escapeHtml(r.path)}')">
+            <div class="repo-item ${r.path === repoPath ? "active" : ""}" onclick="selectRepo('${escapeHtml(r.path)}')" oncontextmenu="showRepoContextMenu(event, '${escapeHtml(r.path)}')">
                 <div class="repo-item-info">
                     <span class="repo-item-name">${escapeHtml(r.name)}</span>
                     <span class="repo-item-path">${escapeHtml(r.path)}</span>
@@ -524,6 +524,11 @@ async function refreshBranchDiff(force) {
     lastDiffStatus = newStatus;
     lastDiffText = newDiff;
 
+    const discardBtn = document.getElementById("discard-all-btn");
+    if (discardBtn) {
+        discardBtn.style.display = newStatus || newDiff ? "" : "none";
+    }
+
     const statusEl = document.getElementById("diff-status");
     if (newStatus) {
         statusEl.innerHTML = newStatus
@@ -546,24 +551,76 @@ async function refreshBranchDiff(force) {
         statusEl.innerHTML = "";
     }
 
+    const imageExtensions = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico"];
+    const imageFiles = [];
+    if (newStatus) {
+        newStatus.split("\n").forEach(line => {
+            const file = line.substring(3);
+            if (imageExtensions.some(ext => file.toLowerCase().endsWith(ext))) {
+                imageFiles.push(file);
+            }
+        });
+    }
+
     const container = document.getElementById("branch-diff-container");
-    if (!newDiff) {
+    if (!newDiff && imageFiles.length === 0) {
         container.innerHTML = '<div class="empty-state">No uncommitted changes</div>';
         return;
     }
 
-    const targetElement = document.createElement("div");
     container.innerHTML = "";
-    container.appendChild(targetElement);
 
-    const diff2htmlUi = new Diff2HtmlUI(targetElement, newDiff, {
-        drawFileList: false,
-        matching: "lines",
-        outputFormat: branchDiffMode,
-        highlight: true,
-    });
-    diff2htmlUi.draw();
-    diff2htmlUi.highlightCode();
+    if (newDiff) {
+        const targetElement = document.createElement("div");
+        container.appendChild(targetElement);
+
+        const diff2htmlUi = new Diff2HtmlUI(targetElement, newDiff, {
+            drawFileList: false,
+            matching: "lines",
+            outputFormat: branchDiffMode,
+            highlight: true,
+        });
+        diff2htmlUi.draw();
+        diff2htmlUi.highlightCode();
+    }
+
+    // Append image previews
+    if (imageFiles.length > 0) {
+        imageFiles.forEach(file => {
+            const imgPath = encodeURI(`${repoPath}/${file}`);
+            const imgHtml = `<div style="padding: 16px; text-align: center; background: var(--bg-surface);"><img src="file://${imgPath}?t=${Date.now()}" style="max-width: 100%; max-height: 500px; border: 1px solid var(--border-color); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" /></div>`;
+
+            const wrappers = Array.from(container.querySelectorAll(".d2h-file-wrapper"));
+            let existingWrapper = wrappers.find(w => {
+                const header = w.querySelector(".d2h-file-name");
+                return header && header.textContent.trim() === file;
+            });
+
+            if (existingWrapper) {
+                // Overwrite standard text/binary diff with image preview
+                const content = existingWrapper.querySelector(".d2h-file-content") || existingWrapper.querySelector("tbody");
+                if (content) {
+                    content.outerHTML = imgHtml;
+                }
+            } else {
+                // Inject fake d2h-file-wrapper for untracked images to look consistent
+                const wrapper = document.createElement("div");
+                wrapper.className = "d2h-file-wrapper";
+                wrapper.innerHTML = `
+                <div class="d2h-file-header">
+                    <span class="d2h-file-name-wrapper">
+                        <svg aria-hidden="true" class="d2h-icon" height="16" version="1.1" viewBox="0 0 12 16" width="12">
+                            <path d="M6 5L2 5 2 4 6 4 6 5 6 5ZM2 8L9 8 9 7 2 7 2 8 2 8ZM2 10L9 10 9 9 2 9 2 10 2 10ZM2 12L9 12 9 11 2 11 2 12 2 12ZM12 4.5L12 14C12 14.6 11.6 15 11 15L1 15C0.5 15 0 14.6 0 14L0 2C0 1.5 0.5 1 1 1L8.5 1 12 4.5 12 4.5ZM11 5L8 2 1 2 1 14 11 14 11 5 11 5Z"></path>
+                        </svg>
+                        <span class="d2h-file-name">${escapeHtml(file)}</span>
+                    </span>
+                </div>
+                ${imgHtml}
+                `;
+                container.appendChild(wrapper);
+            }
+        });
+    }
 }
 
 function switchBranchDiffMode(mode) {
@@ -576,7 +633,7 @@ function switchBranchDiffMode(mode) {
 
 async function discardFileChange(file, statusCode) {
     if (!repoPath) return;
-    if (!confirm(`Discard changes to "${file}"? This cannot be undone.`)) return;
+    if (!confirm(`Discard changes to "${file}" ? This cannot be undone.`)) return;
 
     const result = await window.via.discardFile(repoPath, file, statusCode);
     if (result.ok) {
@@ -620,6 +677,7 @@ function openTool(toolId) {
     document.getElementById("tool-overlay").style.display = "none";
     document.getElementById("preferences-overlay").style.display = "none";
     document.getElementById("git-reference-overlay").style.display = "none";
+    document.getElementById("snippets-overlay").style.display = "none";
     document.getElementById("terminal-header").style.display = "";
 
     if (toolId === "terminal") {
@@ -659,6 +717,13 @@ function openTool(toolId) {
         document.getElementById("terminal-header").style.display = "none";
         document.getElementById("git-reference-overlay").style.display = "flex";
         document.getElementById("tool-git-reference").classList.add("active");
+    }
+
+    if (toolId === "snippets") {
+        document.getElementById("terminal-header").style.display = "none";
+        document.getElementById("snippets-overlay").style.display = "flex";
+        document.getElementById("tool-snippets").classList.add("active");
+        renderSnippets();
     }
 }
 
@@ -723,7 +788,7 @@ function renderChips() {
     container.innerHTML = selectedFiles
         .map(
             (f) =>
-                `<span class="chip">${escapeHtml(f)}<button onclick="cfRemoveFile('${escapeHtml(f)}')">&times;</button></span>`
+                `<span class="chip">${escapeHtml(f)} <button onclick="cfRemoveFile('${escapeHtml(f)}')">&times;</button></span>`
         )
         .join("");
 }
@@ -737,7 +802,7 @@ function applyQuickFilter(days) {
     document.getElementById("cf-end-date").value = formatISODate(end);
 
     document.querySelectorAll(".quick-filter").forEach((b) => b.classList.remove("active"));
-    const btn = document.querySelector(`.quick-filter[onclick="applyQuickFilter(${days})"]`);
+    const btn = document.querySelector(`.quick - filter[onclick = "applyQuickFilter(${days})"]`);
     if (btn) btn.classList.add("active");
 }
 
@@ -777,7 +842,7 @@ async function cfSearch() {
     } else {
         const label = data.truncated
             ? "200+ commits (showing 200)"
-            : `${searchResults.length} commit${searchResults.length === 1 ? "" : "s"}`;
+            : `${searchResults.length} commit${searchResults.length === 1 ? "" : "s"} `;
         heading.textContent = label;
         resultsList.innerHTML = searchResults
             .map(
@@ -789,7 +854,7 @@ async function cfSearch() {
                         <span>${escapeHtml(c.author)}</span>
                         <span>${formatDate(c.date)}</span>
                     </span>
-                </div>`
+                </div > `
             )
             .join("");
     }
@@ -814,7 +879,7 @@ async function cfShowDetail(index) {
 
     const ghLink = document.getElementById("cf-detail-github-link");
     if (githubBaseUrl) {
-        ghLink.href = `${githubBaseUrl}/commit/${commit.hash}`;
+        ghLink.href = `${githubBaseUrl} /commit/${commit.hash} `;
         ghLink.style.display = "";
     } else {
         ghLink.style.display = "none";
@@ -1049,6 +1114,53 @@ function setupCollapsibleDiffs(container) {
     });
 }
 
+// ── Repo Context Menu ───────────────────────────────────────────────────────
+
+let activeContextRepoPath = null;
+
+function showRepoContextMenu(e, path) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    activeContextRepoPath = path;
+    if (typeof hideDiffContextMenu === "function") hideDiffContextMenu();
+
+    const menu = document.getElementById("repo-context-menu");
+    menu.style.display = "block";
+    menu.style.left = e.clientX + "px";
+    menu.style.top = e.clientY + "px";
+
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) menu.style.left = (window.innerWidth - rect.width - 4) + "px";
+    if (rect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - rect.height - 4) + "px";
+}
+
+function hideRepoContextMenu() {
+    const menu = document.getElementById("repo-context-menu");
+    if (menu) menu.style.display = "none";
+    activeContextRepoPath = null;
+}
+
+async function openRepoInGithub() {
+    if (!activeContextRepoPath) return;
+    const path = activeContextRepoPath;
+    hideRepoContextMenu();
+
+    const res = await window.via.getRemoteUrl(path);
+    if (res.url) {
+        window.via.openExternal(res.url);
+    } else {
+        alert("No GitHub remote found for this repository.");
+    }
+}
+
+function openRepoInFinder() {
+    if (!activeContextRepoPath) return;
+    const path = activeContextRepoPath;
+    hideRepoContextMenu();
+    window.via.openInFinder(path);
+}
+
 // ── Diff File Context Menu ──────────────────────────────────────────────────
 
 let diffContextFile = null;
@@ -1083,6 +1195,14 @@ function hideDiffContextMenu() {
     diffContextFile = null;
 }
 
+document.getElementById("diff-context-finder").addEventListener("mousedown", (e) => {
+    e.stopPropagation();
+    if (!diffContextFile) return;
+    const file = diffContextFile;
+    hideDiffContextMenu();
+    window.via.openInFinder(`${repoPath}/${file}`);
+});
+
 document.getElementById("diff-context-discard").addEventListener("mousedown", (e) => {
     e.stopPropagation();
     if (!diffContextFile) return;
@@ -1093,7 +1213,10 @@ document.getElementById("diff-context-discard").addEventListener("mousedown", (e
 });
 
 document.addEventListener("mousedown", (e) => {
-    if (!e.target.closest(".diff-context-menu")) hideDiffContextMenu();
+    if (!e.target.closest(".diff-context-menu")) {
+        hideDiffContextMenu();
+        if (typeof hideRepoContextMenu === "function") hideRepoContextMenu();
+    }
 });
 
 function setupDiffContextMenus(container) {
@@ -1195,7 +1318,7 @@ async function selectBranch(branch) {
         document.getElementById("current-branch").textContent = branch;
         refreshBranchDiff();
     } else {
-        alert(`Failed to checkout branch: ${result.error}`);
+        alert(`Failed to checkout branch: ${result.error} `);
     }
 }
 
@@ -1272,7 +1395,7 @@ const PRESET_THEMES = [
 
 function getCurrentThemeValues() {
     const style = getComputedStyle(document.documentElement);
-    return THEME_KEYS.map((k) => style.getPropertyValue(`--${k}`).trim());
+    return THEME_KEYS.map((k) => style.getPropertyValue(`--${k} `).trim());
 }
 
 function getCurrentThemeString() {
@@ -1283,7 +1406,7 @@ function applyTheme(colors) {
     const root = document.documentElement;
     colors.forEach((color, i) => {
         if (THEME_KEYS[i]) {
-            root.style.setProperty(`--${THEME_KEYS[i]}`, color);
+            root.style.setProperty(`--${THEME_KEYS[i]} `, color);
         }
     });
 
@@ -1319,7 +1442,7 @@ function darkenColor(hex, amount) {
     const r = Math.max(0, Math.round(parseInt(hex.slice(1, 3), 16) * (1 - amount)));
     const g = Math.max(0, Math.round(parseInt(hex.slice(3, 5), 16) * (1 - amount)));
     const b = Math.max(0, Math.round(parseInt(hex.slice(5, 7), 16) * (1 - amount)));
-    return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+    return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")} `;
 }
 
 function hexToRgba(hex, alpha) {
@@ -1343,7 +1466,7 @@ function applyThemeFromInput() {
     const colors = parseThemeString(input.value);
 
     if (!colors) {
-        statusEl.textContent = `Expected ${THEME_KEYS.length} hex colors (#rrggbb) separated by commas`;
+        statusEl.textContent = `Expected ${THEME_KEYS.length} hex colors(#rrggbb) separated by commas`;
         statusEl.className = "status error";
         return;
     }
@@ -1363,7 +1486,7 @@ function resetTheme() {
 
     // Clear inline styles so CSS defaults take over
     const root = document.documentElement;
-    THEME_KEYS.forEach((k) => root.style.removeProperty(`--${k}`));
+    THEME_KEYS.forEach((k) => root.style.removeProperty(`--${k} `));
     root.style.removeProperty("--chip-bg");
     root.style.removeProperty("--hover-bg");
 
@@ -1388,11 +1511,11 @@ function renderThemeSwatches() {
     const values = getCurrentThemeValues();
     container.innerHTML = values
         .map((color, i) => `
-            <div class="prefs-swatch">
-                <input type="color" class="prefs-swatch-color" value="${color}" title="${THEME_KEYS[i]}: ${color}" onchange="swatchChanged(${i}, this.value)">
-                <span class="prefs-swatch-label">${THEME_LABELS[i]}</span>
-            </div>
-        `)
+                <div class="prefs-swatch">
+                    <input type="color" class="prefs-swatch-color" value="${color}" title="${THEME_KEYS[i]}: ${color}" onchange="swatchChanged(${i}, this.value)">
+                    <span class="prefs-swatch-label">${THEME_LABELS[i]}</span>
+                </div>
+            `)
         .join("");
 
     renderPresets();
@@ -1455,3 +1578,200 @@ function loadSavedTheme() {
         startTerminal();
     }
 })();
+
+// ── Snippets / Aliases ───────────────────────────────────────────────────────
+
+function getSnippets() {
+    try {
+        return JSON.parse(localStorage.getItem("via_snippets") || "[]");
+    } catch {
+        return [];
+    }
+}
+
+function saveSnippets(snippets) {
+    localStorage.setItem("via_snippets", JSON.stringify(snippets));
+}
+
+function renderSnippets() {
+    const list = document.getElementById("snippets-list");
+    const snippets = getSnippets();
+
+    if (snippets.length === 0) {
+        list.innerHTML = '<div class="empty-state">No snippets saved. Click + to add one.</div>';
+        return;
+    }
+
+    list.innerHTML = snippets.map(s => `
+        <div class="snippet-card">
+            ${s.name ? `<div class="snippet-header"><div class="snippet-name">${escapeHtml(s.name)}</div></div>` : ''}
+            <div class="snippet-command-wrapper">
+                <div class="snippet-command-text">${escapeHtml(s.command)}</div>
+                <div class="snippet-actions">
+                    <button class="snippet-icon-btn" onclick="copySnippet('${s.id}')" title="Copy to clipboard">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    </button>
+                    <button class="snippet-icon-btn" onclick="openSnippetModal('${s.id}')" title="Edit snippet">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                    </button>
+                    <button class="snippet-icon-btn primary" 
+                            onclick="runSnippetContextClick(event, '${s.id}', false)" 
+                            oncontextmenu="runSnippetContextClick(event, '${s.id}', true)" title="Run (Right-click for options)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l15 8-15 8z"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join("");
+}
+
+function copySnippet(id) {
+    const snippet = getSnippets().find(s => s.id === id);
+    if (!snippet) return;
+    navigator.clipboard.writeText(snippet.command).catch(err => {
+        console.error('Failed to copy: ', err);
+    });
+}
+
+// Snippet Context & Execution
+let currentSnippetRunId = null;
+
+function runSnippetContextClick(event, id, isRightClick = false) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (isRightClick) {
+        showSnippetRunMenu(event, id);
+    } else {
+        // Normal click => Run immediately in current terminal
+        runSnippet(id, false);
+    }
+}
+
+function showSnippetRunMenu(event, id) {
+    currentSnippetRunId = id;
+    const menu = document.getElementById("snippet-run-context-menu");
+    menu.style.display = "block";
+
+    // Position menu
+    let x = event.pageX;
+    let y = event.pageY;
+    if (x + menu.offsetWidth > window.innerWidth) x = window.innerWidth - menu.offsetWidth;
+    if (y + menu.offsetHeight > window.innerHeight) y = window.innerHeight - menu.offsetHeight;
+
+    menu.style.left = x + "px";
+    menu.style.top = y + "px";
+
+    const closeListener = (e) => {
+        if (!menu.contains(e.target)) {
+            menu.style.display = "none";
+            document.removeEventListener("mousedown", closeListener);
+        }
+    };
+    setTimeout(() => document.addEventListener("mousedown", closeListener), 0);
+}
+
+function runSnippetContext(newTerminal) {
+    const menu = document.getElementById("snippet-run-context-menu");
+    menu.style.display = "none";
+    if (currentSnippetRunId) {
+        runSnippet(currentSnippetRunId, newTerminal);
+    }
+}
+
+function runSnippet(id, newTerminal = false) {
+    const snippet = getSnippets().find(s => s.id === id);
+    if (!snippet) return;
+
+    if (newTerminal) {
+        addTerminalTab();
+    }
+
+    if (!activeTerminalId) {
+        alert("No active terminal found.");
+        return;
+    }
+
+    // Switch to terminal view to see it run
+    openTool('terminal');
+
+    // Send command + Enter
+    window.via.terminalInput(activeTerminalId, snippet.command + "\r");
+}
+
+// Edit Modal
+function openSnippetModal(id = null) {
+    const modal = document.getElementById("snippet-edit-modal");
+    const title = document.getElementById("snippet-modal-title");
+    const idInput = document.getElementById("snippet-id-input");
+    const nameInput = document.getElementById("snippet-name-input");
+    const commandInput = document.getElementById("snippet-command-input");
+    const deleteBtn = document.getElementById("snippet-delete-btn");
+
+    if (id) {
+        const snippet = getSnippets().find(s => s.id === id);
+        if (snippet) {
+            title.textContent = "Edit Snippet";
+            idInput.value = snippet.id;
+            nameInput.value = snippet.name || "";
+            commandInput.value = snippet.command || "";
+            deleteBtn.style.display = "block";
+        }
+    } else {
+        title.textContent = "New Snippet";
+        idInput.value = "";
+        nameInput.value = "";
+        commandInput.value = "";
+        deleteBtn.style.display = "none";
+    }
+
+    modal.style.display = "flex";
+    if (!id) setTimeout(() => commandInput.focus(), 50);
+}
+
+function closeSnippetModal() {
+    document.getElementById("snippet-edit-modal").style.display = "none";
+}
+
+function saveSnippetModal() {
+    const idInput = document.getElementById("snippet-id-input").value;
+    const nameInput = document.getElementById("snippet-name-input").value.trim();
+    const commandInput = document.getElementById("snippet-command-input").value.trim();
+
+    if (!commandInput) {
+        alert("Command is required.");
+        return;
+    }
+
+    const snippets = getSnippets();
+    if (idInput) {
+        const idx = snippets.findIndex(s => s.id === idInput);
+        if (idx !== -1) {
+            snippets[idx].name = nameInput;
+            snippets[idx].command = commandInput;
+        }
+    } else {
+        // create new
+        snippets.push({
+            id: 'snippet_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+            name: nameInput,
+            command: commandInput
+        });
+    }
+
+    saveSnippets(snippets);
+    closeSnippetModal();
+    renderSnippets();
+}
+
+function deleteSnippetFromModal() {
+    const id = document.getElementById("snippet-id-input").value;
+    if (!id) return;
+
+    if (confirm("Are you sure you want to delete this snippet?")) {
+        const snippets = getSnippets().filter(s => s.id !== id);
+        saveSnippets(snippets);
+        closeSnippetModal();
+        renderSnippets();
+    }
+}
