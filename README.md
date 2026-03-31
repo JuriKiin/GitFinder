@@ -1,17 +1,36 @@
-# Via
+<div align="center">
+  <img src="logo.png" alt="Via Logo" width="128" />
+  <h1>Via</h1>
+</div>
 
 A lightweight git UI with an embedded terminal. Via acts as a bridge for people who normally use UI tools for git but want to become more terminal-friendly — while keeping helpful visual tools like side-by-side diffs.
+
+![Via Interface](screenshots/demo-1.png)
 
 ## Features
 
 - **Embedded terminal** — Full PTY shell that opens in your repo directory, with multiple tabs and per-repo sessions
 - **Real-time diff panel** — See your uncommitted changes update live, with collapsible file sections and unified/split view
 - **Discard changes** — Discard all changes or individual files directly from the diff panel
+
+![Diff Panel](screenshots/demo-2.png)
+
 - **Search Commits** — Find commits that touched specific files in a date range, with syntax-highlighted diffs
 - **Branch switching** — View and switch branches from the sidebar
 - **Git Reference** — Built-in cheat sheet of common git commands
+
+![Git Reference](screenshots/demo-3.png)
+
+- **Snippets & Aliases** — Save frequently used terminal workflows and execute them instantly in your active or new tabs
+
+![Snippets](screenshots/demo-6.png)
+
 - **Customizable themes** — Choose from built-in presets or create your own with custom color schemes
 - **Native macOS app** — Built with Electron
+
+![Customization](screenshots/demo-4.png)
+
+![Terminal View](screenshots/demo-5.png)
 
 ## Install from DMG
 

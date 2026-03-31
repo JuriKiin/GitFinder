@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require("electron");
 const path = require("path");
 const os = require("os");
 const { spawn, execFile } = require("child_process");
@@ -311,7 +311,7 @@ ipcMain.handle("branch-diff", async (_e, repoPath) => {
     runGit(resolved, ["branch", "--show-current"]),
     runGit(resolved, ["diff", "--cached"]),
     runGit(resolved, ["diff"]),
-    runGit(resolved, ["status", "--short"]),
+    runGit(resolved, ["status", "--short", "-uall"]),
   ]);
 
   const branch = branchResult.returncode === 0 ? branchResult.stdout.trim() : "";
@@ -323,7 +323,7 @@ ipcMain.handle("branch-diff", async (_e, repoPath) => {
     diff += unstagedResult.stdout;
   }
 
-  const status = statusResult.returncode === 0 ? statusResult.stdout.trim() : "";
+  const status = statusResult.returncode === 0 ? statusResult.stdout.trimEnd() : "";
 
   const maxSize = 500 * 1024;
   if (diff.length > maxSize) {
@@ -403,12 +403,20 @@ ipcMain.handle("discard-all", async (_e, repoPath) => {
   return { ok: true };
 });
 
+ipcMain.on("open-in-finder", (_e, dirPath) => {
+  shell.showItemInFolder(dirPath);
+});
+
+ipcMain.on("open-external", (_e, url) => {
+  if (url) shell.openExternal(url);
+});
+
 // ── IPC: Terminal (PTY) ──────────────────────────────────────────────────────
 
 function killPty(id) {
   const p = ptyProcesses.get(id);
   if (p) {
-    try { p.kill(); } catch {}
+    try { p.kill(); } catch { }
     ptyProcesses.delete(id);
   }
 }
@@ -469,7 +477,7 @@ ipcMain.on("terminal-input", (_e, id, data) => {
 ipcMain.on("terminal-resize", (_e, id, cols, rows) => {
   const p = ptyProcesses.get(id);
   if (p) {
-    try { p.resize(cols, rows); } catch {}
+    try { p.resize(cols, rows); } catch { }
   }
 });
 
