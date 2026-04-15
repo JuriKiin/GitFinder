@@ -468,6 +468,12 @@ body {
     min-height: 40px;
 }
 
+/* When sidebar is collapsed, the main content starts at 36px — push the
+   panel header past the macOS traffic light buttons (~75px from window edge) */
+.app-layout.sidebar-collapsed .panel-header {
+    padding-left: 75px;
+}
+
 .panel-title {
     font-size: 12px;
     font-weight: 700;
