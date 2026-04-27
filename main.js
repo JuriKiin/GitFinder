@@ -271,7 +271,8 @@ app.on("activate", () => {
 
 function runGit(repoPath, args) {
   return new Promise((resolve, reject) => {
-    execFile("git", ["-C", repoPath, ...args], { timeout: 30000, maxBuffer: 5 * 1024 * 1024 }, (err, stdout, stderr) => {
+    const env = { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH || "/usr/bin:/bin"}` };
+    execFile("git", ["-C", repoPath, ...args], { timeout: 30000, maxBuffer: 5 * 1024 * 1024, env }, (err, stdout, stderr) => {
       if (err) {
         resolve({ returncode: err.code || 1, stdout: stdout || "", stderr: stderr || err.message });
       } else {
@@ -284,7 +285,8 @@ function runGit(repoPath, args) {
 function isGitRepo(dirPath) {
   return new Promise((resolve) => {
     const resolved = path.resolve(dirPath);
-    execFile("git", ["-C", resolved, "rev-parse", "--git-dir"], { timeout: 5000 }, (err, stdout) => {
+    const env = { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH || "/usr/bin:/bin"}` };
+    execFile("git", ["-C", resolved, "rev-parse", "--git-dir"], { timeout: 5000, env }, (err, stdout) => {
       if (err) {
         resolve({ valid: false, path: resolved });
         return;
